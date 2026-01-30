@@ -1,3 +1,5 @@
+//go:build !integration
+
 package workflow
 
 import (
@@ -182,7 +184,8 @@ func TestValidateSafeOutputsAllowedDomains(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := validateSafeOutputsAllowedDomains(tt.config)
+			c := NewCompiler()
+			err := c.validateSafeOutputsAllowedDomains(tt.config)
 			if tt.wantErr {
 				require.Error(t, err, "Expected an error but got none")
 				if tt.errMsg != "" {
@@ -856,7 +859,8 @@ func TestValidateSafeOutputsAllowedDomainsIntegration(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := validateSafeOutputsAllowedDomains(tt.config)
+			c := NewCompiler()
+			err := c.validateSafeOutputsAllowedDomains(tt.config)
 			if tt.wantErr {
 				assert.Error(t, err)
 			} else {

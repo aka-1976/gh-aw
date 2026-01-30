@@ -1,3 +1,5 @@
+//go:build !integration
+
 package workflow
 
 import (
@@ -168,6 +170,42 @@ func TestBuildReactionCondition(t *testing.T) {
 	// It should contain both the event name check and the not-from-fork check
 	if !strings.Contains(rendered, "(github.event_name == 'pull_request') && (github.event.pull_request.head.repo.id == github.repository_id)") {
 		t.Errorf("Expected pull_request condition to include fork check, but got: %s", rendered)
+	}
+}
+
+func TestBuildIsSafePreActivationEvent(t *testing.T) {
+	result := BuildIsSafePreActivationEvent()
+	rendered := result.Render()
+
+	// Should be a disjunction of schedule and merge_group event checks
+	expectedSubstrings := []string{
+		"github.event_name == 'schedule'",
+		"github.event_name == 'merge_group'",
+		"||",
+	}
+
+	for _, substr := range expectedSubstrings {
+		if !strings.Contains(rendered, substr) {
+			t.Errorf("Expected rendered condition to contain '%s', but got: %s", substr, rendered)
+		}
+	}
+}
+
+func TestBuildIsNotSafePreActivationEvent(t *testing.T) {
+	result := BuildIsNotSafePreActivationEvent()
+	rendered := result.Render()
+
+	// Should be a conjunction of NOT schedule AND NOT merge_group
+	expectedSubstrings := []string{
+		"github.event_name != 'schedule'",
+		"github.event_name != 'merge_group'",
+		"&&",
+	}
+
+	for _, substr := range expectedSubstrings {
+		if !strings.Contains(rendered, substr) {
+			t.Errorf("Expected rendered condition to contain '%s', but got: %s", substr, rendered)
+		}
 	}
 }
 

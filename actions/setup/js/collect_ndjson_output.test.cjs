@@ -97,7 +97,15 @@ describe("collect_ndjson_output.cjs", () => {
               ruleIdSuffix: { type: "string", pattern: "^[a-zA-Z0-9_-]+$", patternError: "must contain only alphanumeric characters, hyphens, and underscores", sanitize: !0, maxLength: 128 },
             },
           },
-          assign_to_agent: { defaultMax: 1, fields: { issue_number: { required: !0, positiveInteger: !0 }, agent: { type: "string", sanitize: !0, maxLength: 128 } } },
+          assign_to_agent: {
+            defaultMax: 1,
+            customValidation: "requiresOneOf:issue_number,pull_number",
+            fields: {
+              issue_number: { issueNumberOrTemporaryId: !0 },
+              pull_number: { optionalPositiveInteger: !0 },
+              agent: { type: "string", sanitize: !0, maxLength: 128 },
+            },
+          },
           create_discussion: {
             defaultMax: 1,
             fields: { title: { required: !0, type: "string", sanitize: !0, maxLength: 128 }, body: { required: !0, type: "string", sanitize: !0, maxLength: 65e3 }, category: { type: "string", sanitize: !0, maxLength: 128 } },
@@ -1171,7 +1179,7 @@ describe("collect_ndjson_output.cjs", () => {
           (fs.mkdirSync("/opt/gh-aw/safeoutputs", { recursive: !0 }), fs.writeFileSync(configPath, __config), await eval(`(async () => { ${collectScript}; await main(); })()`));
           const outputCall = mockCore.setOutput.mock.calls.find(call => "output" === call[0]),
             parsedOutput = JSON.parse(outputCall[1]);
-          expect(parsedOutput.items[0].body).toBe("Use https://github.com/repo for code, avoid (redacted) and (redacted) but z3 -v:10 should work");
+          expect(parsedOutput.items[0].body).toBe("Use https://github.com/repo for code, avoid (example.com/redacted) and (example.com/redacted) but z3 -v:10 should work");
         }),
         it("should handle mixed protocols and command flags in complex text", async () => {
           const testFile = "/tmp/gh-aw/test-ndjson-output.txt",
@@ -1183,7 +1191,7 @@ describe("collect_ndjson_output.cjs", () => {
           (fs.mkdirSync("/opt/gh-aw/safeoutputs", { recursive: !0 }), fs.writeFileSync(configPath, __config), await eval(`(async () => { ${collectScript}; await main(); })()`));
           const outputCall = mockCore.setOutput.mock.calls.find(call => "output" === call[0]),
             parsedOutput = JSON.parse(outputCall[1]);
-          expect(parsedOutput.items[0].body).toBe("Install from https://github.com/z3prover/z3, then run: z3 -v:10 -memory:high -timeout:30000. Avoid (redacted) or (redacted)");
+          expect(parsedOutput.items[0].body).toBe("Install from https://github.com/z3prover/z3, then run: z3 -v:10 -memory:high -timeout:30000. Avoid (git.example.com/redacted) or (localhost/redacted)");
         }),
         it("should preserve allowed domains while redacting unknown ones", async () => {
           const testFile = "/tmp/gh-aw/test-ndjson-output.txt",
@@ -1194,7 +1202,7 @@ describe("collect_ndjson_output.cjs", () => {
           (fs.mkdirSync("/opt/gh-aw/safeoutputs", { recursive: !0 }), fs.writeFileSync(configPath, __config), await eval(`(async () => { ${collectScript}; await main(); })()`));
           const outputCall = mockCore.setOutput.mock.calls.find(call => "output" === call[0]),
             parsedOutput = JSON.parse(outputCall[1]);
-          expect(parsedOutput.items[0].body).toBe("GitHub URLs: https://github.com/repo, https://api.github.com/users, https://githubusercontent.com/file. External: (redacted)");
+          expect(parsedOutput.items[0].body).toBe("GitHub URLs: https://github.com/repo, https://api.github.com/users, https://githubusercontent.com/file. External: (example.com/redacted)");
         }),
         it("should handle @mentions neutralization", async () => {
           const testFile = "/tmp/gh-aw/test-ndjson-output.txt",
@@ -1242,7 +1250,7 @@ describe("collect_ndjson_output.cjs", () => {
           (fs.mkdirSync("/opt/gh-aw/safeoutputs", { recursive: !0 }), fs.writeFileSync(configPath, __config), await eval(`(async () => { ${collectScript}; await main(); })()`));
           const outputCall = mockCore.setOutput.mock.calls.find(call => "output" === call[0]),
             parsedOutput = JSON.parse(outputCall[1]);
-          (expect(parsedOutput.items[0].body).toBe("Allowed: https://example.com/page, https://sub.example.com/file, https://test.org/doc. Blocked: (redacted), (redacted)"),
+          (expect(parsedOutput.items[0].body).toBe("Allowed: https://example.com/page, https://sub.example.com/file, https://test.org/doc. Blocked: (github.com/redacted), (blocked.com/redacted)"),
             delete process.env.GH_AW_ALLOWED_DOMAINS,
             originalServerUrl && (process.env.GITHUB_SERVER_URL = originalServerUrl),
             originalApiUrl && (process.env.GITHUB_API_URL = originalApiUrl));
@@ -1306,7 +1314,7 @@ describe("collect_ndjson_output.cjs", () => {
           const outputCall = mockCore.setOutput.mock.calls.find(call => "output" === call[0]),
             parsedOutput = JSON.parse(outputCall[1]);
           (expect(parsedOutput.items[0].title).toBe("PR with z3 -v:10 flag"),
-            expect(parsedOutput.items[0].body).toBe("Testing https://github.com/repo and (redacted)"),
+            expect(parsedOutput.items[0].body).toBe("Testing https://github.com/repo and (example.com/redacted)"),
             expect(parsedOutput.items[0].branch).toBe("feature/z3-timeout:5000"),
             expect(parsedOutput.items[0].labels).toEqual(["bug", "z3:solver"]));
         }),
@@ -1521,6 +1529,19 @@ describe("collect_ndjson_output.cjs", () => {
           const parsedOutput = JSON.parse(outputCall[1]);
           (expect(parsedOutput.items).toHaveLength(1), expect(parsedOutput.items[0].issue_number).toBe(42), expect(parsedOutput.errors).toHaveLength(0));
         }),
+        it("should validate assign_to_agent with temporary_id issue_number", async () => {
+          const testFile = "/tmp/gh-aw/test-ndjson-output.txt",
+            ndjsonContent = '{"type": "assign_to_agent", "issue_number": "aw_abc123def456"}';
+          (fs.writeFileSync(testFile, ndjsonContent), (process.env.GH_AW_SAFE_OUTPUTS = testFile));
+          const __config = '{"assign_to_agent": true}',
+            configPath = "/opt/gh-aw/safeoutputs/config.json";
+          (fs.mkdirSync("/opt/gh-aw/safeoutputs", { recursive: !0 }), fs.writeFileSync(configPath, __config), await eval(`(async () => { ${collectScript}; await main(); })()`));
+          const setOutputCalls = mockCore.setOutput.mock.calls,
+            outputCall = setOutputCalls.find(call => "output" === call[0]);
+          expect(outputCall).toBeDefined();
+          const parsedOutput = JSON.parse(outputCall[1]);
+          (expect(parsedOutput.items).toHaveLength(1), expect(parsedOutput.items[0].issue_number).toBe("aw_abc123def456"), expect(parsedOutput.errors).toHaveLength(0));
+        }),
         it("should validate assign_to_agent with optional fields", async () => {
           const testFile = "/tmp/gh-aw/test-ndjson-output.txt",
             ndjsonContent = '{"type": "assign_to_agent", "issue_number": 42, "agent": "my-agent"}';
@@ -1549,7 +1570,7 @@ describe("collect_ndjson_output.cjs", () => {
             outputCall = setOutputCalls.find(call => "output" === call[0]);
           expect(outputCall).toBeDefined();
           const parsedOutput = JSON.parse(outputCall[1]);
-          (expect(parsedOutput.items).toHaveLength(0), expect(parsedOutput.errors.length).toBeGreaterThan(0), expect(parsedOutput.errors.some(e => e.includes("assign_to_agent 'issue_number' is required"))).toBe(!0));
+          (expect(parsedOutput.items).toHaveLength(0), expect(parsedOutput.errors.length).toBeGreaterThan(0), expect(parsedOutput.errors.some(e => e.includes("assign_to_agent requires at least one of"))).toBe(!0));
         }));
     }),
     describe("link_sub_issue temporary ID validation", () => {

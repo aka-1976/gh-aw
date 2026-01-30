@@ -49,7 +49,7 @@ You are a code reviewer specialized in identifying breaking CLI changes. Analyze
 First, read and understand the breaking change rules defined in the spec:
 
 ```bash
-cat ${{ github.workspace }}/specs/breaking-cli-rules.md
+cat ${{ github.workspace }}/scratchpad/breaking-cli-rules.md
 ```
 
 Key breaking change categories:
@@ -129,11 +129,17 @@ Is it removing schema fields or making optional fields required?
 
 ### If NO Breaking Changes Found
 
-Output a noop message:
+**YOU MUST CALL** the `noop` tool to log completion:
 
+```json
+{
+  "noop": {
+    "message": "No breaking changes detected in commits from the last 24 hours. Analysis complete."
+  }
+}
 ```
-No breaking changes detected in commits from the last 24 hours. Analysis complete.
-```
+
+**DO NOT just write this message in your output text** - you MUST actually invoke the `noop` tool. The workflow will fail if you don't call it.
 
 Do NOT create an issue if there are no breaking changes.
 
@@ -165,14 +171,14 @@ List the commits that were analyzed with their details.
 Complete the following items to address these breaking changes:
 
 - [ ] **Review all breaking changes detected** - Verify each change is correctly categorized
-- [ ] **Create a changeset file in `.changeset/` directory** - Create a file like `major-breaking-change-description.md` with the change details. Specify the semver bump type (`major`, `minor`, or `patch`) in the YAML frontmatter of the changeset file. The release script determines the overall version bump by selecting the highest-priority bump type across all changesets. See [specs/changesets.md](specs/changesets.md) for format details.
+- [ ] **Create a changeset file in `.changeset/` directory** - Create a file like `major-breaking-change-description.md` with the change details. Specify the semver bump type (`major`, `minor`, or `patch`) in the YAML frontmatter of the changeset file. The release script determines the overall version bump by selecting the highest-priority bump type across all changesets. See [scratchpad/changesets.md](scratchpad/changesets.md) for format details.
 - [ ] **Add migration guidance to changeset** - Include clear migration instructions in the changeset file showing users how to update their workflows
 - [ ] **Document breaking changes in CHANGELOG.md** - Add entries under "Breaking Changes" section with user-facing descriptions
 - [ ] **Verify backward compatibility was considered** - Confirm that alternatives to breaking were evaluated
 
 ### Reference
 
-See [specs/breaking-cli-rules.md](specs/breaking-cli-rules.md) for the complete breaking change policy.
+See [scratchpad/breaking-cli-rules.md](scratchpad/breaking-cli-rules.md) for the complete breaking change policy.
 
 ---
 

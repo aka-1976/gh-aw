@@ -5,10 +5,10 @@ import (
 	"os"
 	"strings"
 
-	"github.com/githubnext/gh-aw/pkg/campaign"
 	"github.com/githubnext/gh-aw/pkg/cli"
 	"github.com/githubnext/gh-aw/pkg/console"
 	"github.com/githubnext/gh-aw/pkg/constants"
+	"github.com/githubnext/gh-aw/pkg/parser"
 	"github.com/githubnext/gh-aw/pkg/workflow"
 	"github.com/spf13/cobra"
 )
@@ -221,6 +221,7 @@ Examples:
 		jsonOutput, _ := cmd.Flags().GetBool("json")
 		fix, _ := cmd.Flags().GetBool("fix")
 		stats, _ := cmd.Flags().GetBool("stats")
+		failFast, _ := cmd.Flags().GetBool("fail-fast")
 		noCheckUpdate, _ := cmd.Flags().GetBool("no-check-update")
 		verbose, _ := cmd.Flags().GetBool("verbose")
 		if err := validateEngine(engineOverride); err != nil {
@@ -272,12 +273,14 @@ Examples:
 			Actionlint:             actionlint,
 			JSONOutput:             jsonOutput,
 			Stats:                  stats,
+			FailFast:               failFast,
 		}
 		if _, err := cli.CompileWorkflows(cmd.Context(), config); err != nil {
-			errMsg := err.Error()
-			// Check if error is already formatted (contains suggestions or starts with ✗)
-			if strings.Contains(errMsg, "Suggestions:") || strings.HasPrefix(errMsg, "✗") {
-				return fmt.Errorf("%s", errMsg)
+			// Format validation error for better user experience
+			// The main function will detect the ✗ prefix and print it without double formatting
+			if !jsonOutput {
+				// Return a new error with formatted message so main() can print it
+				return fmt.Errorf("%s", cli.FormatValidationError(err))
 			}
 			return err
 		}
@@ -361,7 +364,7 @@ var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Show gh aw extension version information",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		fmt.Printf("%s version %s\n", string(constants.CLIExtensionPrefix), version)
+		fmt.Fprintf(os.Stderr, "%s version %s\n", string(constants.CLIExtensionPrefix), version)
 		return nil
 	},
 }
@@ -502,6 +505,7 @@ Use "` + string(constants.CLIExtensionPrefix) + ` help all" to show help for all
 	compileCmd.Flags().Bool("fix", false, "Apply automatic codemod fixes to workflows before compiling")
 	compileCmd.Flags().BoolP("json", "j", false, "Output results in JSON format")
 	compileCmd.Flags().Bool("stats", false, "Display statistics table sorted by file size (shows jobs, steps, scripts, and shells)")
+	compileCmd.Flags().Bool("fail-fast", false, "Stop at the first validation error instead of collecting all errors")
 	compileCmd.Flags().Bool("no-check-update", false, "Skip checking for gh-aw updates")
 	compileCmd.MarkFlagsMutuallyExclusive("dir", "workflows-dir")
 
@@ -548,13 +552,15 @@ Use "` + string(constants.CLIExtensionPrefix) + ` help all" to show help for all
 	mcpCmd := cli.NewMCPCommand()
 	logsCmd := cli.NewLogsCommand()
 	auditCmd := cli.NewAuditCommand()
+	healthCmd := cli.NewHealthCommand()
 	mcpServerCmd := cli.NewMCPServerCommand()
 	prCmd := cli.NewPRCommand()
-	campaignCmd := campaign.NewCommand()
 	secretsCmd := cli.NewSecretsCommand()
 	fixCmd := cli.NewFixCommand()
 	upgradeCmd := cli.NewUpgradeCommand()
 	completionCmd := cli.NewCompletionCommand()
+	hashCmd := cli.NewHashCommand()
+	projectCmd := cli.NewProjectCommand()
 
 	// Assign commands to groups
 	// Setup Commands
@@ -582,12 +588,14 @@ Use "` + string(constants.CLIExtensionPrefix) + ` help all" to show help for all
 	// Analysis Commands
 	logsCmd.GroupID = "analysis"
 	auditCmd.GroupID = "analysis"
-	campaignCmd.GroupID = "analysis"
+	healthCmd.GroupID = "analysis"
 
 	// Utilities
 	mcpServerCmd.GroupID = "utilities"
 	prCmd.GroupID = "utilities"
 	completionCmd.GroupID = "utilities"
+	hashCmd.GroupID = "utilities"
+	projectCmd.GroupID = "utilities"
 
 	// version command is intentionally left without a group (common practice)
 
@@ -607,14 +615,16 @@ Use "` + string(constants.CLIExtensionPrefix) + ` help all" to show help for all
 	rootCmd.AddCommand(disableCmd)
 	rootCmd.AddCommand(logsCmd)
 	rootCmd.AddCommand(auditCmd)
+	rootCmd.AddCommand(healthCmd)
 	rootCmd.AddCommand(mcpCmd)
 	rootCmd.AddCommand(mcpServerCmd)
 	rootCmd.AddCommand(prCmd)
 	rootCmd.AddCommand(versionCmd)
-	rootCmd.AddCommand(campaignCmd)
 	rootCmd.AddCommand(secretsCmd)
 	rootCmd.AddCommand(fixCmd)
 	rootCmd.AddCommand(completionCmd)
+	rootCmd.AddCommand(hashCmd)
+	rootCmd.AddCommand(projectCmd)
 }
 
 func main() {
@@ -623,6 +633,10 @@ func main() {
 
 	// Set version information in the workflow package for generated file headers
 	workflow.SetVersion(version)
+
+	// Set version information in the parser package for frontmatter hash computation
+	parser.SetCompilerVersion(version)
+	parser.SetIsRelease(isRelease == "true")
 
 	// Set release flag in the workflow package
 	workflow.SetIsRelease(isRelease == "true")

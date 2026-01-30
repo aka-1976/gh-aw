@@ -26,6 +26,8 @@
 #     - shared/changeset-format.md
 #     - shared/jqschema.md
 #     - shared/safe-output-app.md
+#
+# frontmatter-hash: a7fa01b4ea1aca9544ba7ada77aed87d08ceb9a4e18a5afedca73f3506971e65
 
 name: "Changeset Generator"
 "on":
@@ -49,10 +51,10 @@ jobs:
   activation:
     needs: pre_activation
     if: >
-      (needs.pre_activation.outputs.activated == 'true') && (((github.event.pull_request.base.ref == github.event.repository.default_branch) &&
-      ((github.event_name != 'pull_request') || (github.event.pull_request.head.repo.id == github.repository_id))) &&
-      ((github.event_name != 'pull_request') || ((github.event.action != 'labeled') || (github.event.label.name == 'changeset' ||
-      github.event.label.name == 'smoke'))))
+      ((needs.pre_activation.result == 'skipped') || (needs.pre_activation.outputs.activated == 'true')) &&
+      (((github.event.pull_request.base.ref == github.event.repository.default_branch) && ((github.event_name != 'pull_request') ||
+      (github.event.pull_request.head.repo.id == github.repository_id))) && ((github.event_name != 'pull_request') ||
+      ((github.event.action != 'labeled') || (github.event.label.name == 'changeset' || github.event.label.name == 'smoke'))))
     runs-on: ubuntu-slim
     permissions:
       contents: read
@@ -553,7 +555,7 @@ jobs:
               version: "",
               agent_version: "0.92.0",
               workflow_name: "Changeset Generator",
-              experimental: true,
+              experimental: false,
               supports_tools_allowlist: true,
               supports_http_transport: true,
               run_id: context.runId,
@@ -601,7 +603,6 @@ jobs:
           GH_AW_GITHUB_REPOSITORY: ${{ github.repository }}
           GH_AW_GITHUB_RUN_ID: ${{ github.run_id }}
           GH_AW_GITHUB_WORKSPACE: ${{ github.workspace }}
-          GH_AW_NEEDS_ACTIVATION_OUTPUTS_TEXT: ${{ needs.activation.outputs.text }}
         run: |
           bash /opt/gh-aw/actions/create_prompt_first.sh
           cat << 'PROMPT_EOF' > "$GH_AW_PROMPT"
@@ -804,76 +805,10 @@ jobs:
           
           
           
-          # Changeset Generator
           
-          You are the Changeset Generator agent - responsible for automatically creating changeset files when a pull request becomes ready for review.
-          
-          ## Mission
-          
-          When a pull request is marked as ready for review, analyze the changes and create a properly formatted changeset file that documents the changes according to the changeset specification.
-          
-          ## Current Context
-          
-          - **Repository**: __GH_AW_GITHUB_REPOSITORY__
-          - **Pull Request Number**: __GH_AW_GITHUB_EVENT_PULL_REQUEST_NUMBER__
-          - **Pull Request Content**: "__GH_AW_NEEDS_ACTIVATION_OUTPUTS_TEXT__"
-          
-          **IMPORTANT - Token Optimization**: The pull request content above is already sanitized and available. DO NOT use `pull_request_read` or similar GitHub API tools to fetch PR details - you already have everything you need in the context above. Using API tools wastes 40k+ tokens per call.
-          
-          ## Task
-          
-          Your task is to:
-          
-          1. **Analyze the Pull Request**: Review the pull request title and description above to understand what has been modified.
-          
-          2. **Use the repository name as the package identifier** (gh-aw)
-          
-          3. **Determine the Change Type**:
-             - **major**: Major breaking changes (X.0.0) - Very unlikely, probably should be **minor**
-             - **minor**: Breaking changes in the CLI (0.X.0) - indicated by "BREAKING CHANGE" or major API changes
-             - **patch**: Bug fixes, docs, refactoring, internal changes, tooling, new shared workflows (0.0.X)
-             
-             **Important**: Internal changes, tooling, and documentation are always "patch" level.
-          
-          4. **Generate the Changeset File**:
-             - Create the `.changeset/` directory if it doesn't exist: `mkdir -p .changeset`
-             - Use format from the changeset format reference above
-             - Filename: `<type>-<short-description>.md` (e.g., `patch-fix-bug.md`)
-          
-          5. **Commit and Push Changes**:
-             - Add and commit the changeset file using git commands:
-               ```bash
-               git add .changeset/<filename> && git commit -m "Add changeset"
-               ```
-             - **CRITICAL**: You MUST call the `push_to_pull_request_branch` tool to push your changes:
-               ```javascript
-               push_to_pull_request_branch({
-                 message: "Add changeset for this pull request"
-               })
-               ```
-             - The `branch` parameter is optional - it will automatically detect the current PR branch
-             - This tool call is REQUIRED for your changes to be pushed to the pull request
-             - **WARNING**: If you don't call this tool, your changeset file will NOT be pushed and the job will be skipped
-          
-          6. **Append Changeset to PR Description**:
-             - After pushing the changeset file, append a summary to the pull request description
-             - Use the `update_pull_request` tool:
-               ```javascript
-               update_pull_request({
-                 body: "## Changeset\n\n- **Type**: <patch|minor|major>\n- **Description**: <brief description of changes>"
-               })
-               ```
-             - This adds a "Changeset" section at the end of the PR description
-          
-          ## Guidelines
-          
-          - **Be Accurate**: Analyze the PR content carefully to determine the correct change type
-          - **Be Clear**: The changeset description should clearly explain what changed
-          - **Be Concise**: Keep descriptions brief but informative
-          - **Follow Conventions**: Use the exact changeset format specified above
-          - **Single Package Default**: If unsure about package structure, default to "gh-aw"
-          - **Smart Naming**: Use descriptive filenames that indicate the change (e.g., `patch-fix-rendering-bug.md`)
-          
+          PROMPT_EOF
+          cat << 'PROMPT_EOF' >> "$GH_AW_PROMPT"
+          {{#runtime-import workflows/changeset.md}}
           PROMPT_EOF
       - name: Substitute placeholders
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
@@ -887,7 +822,6 @@ jobs:
           GH_AW_GITHUB_REPOSITORY: ${{ github.repository }}
           GH_AW_GITHUB_RUN_ID: ${{ github.run_id }}
           GH_AW_GITHUB_WORKSPACE: ${{ github.workspace }}
-          GH_AW_NEEDS_ACTIVATION_OUTPUTS_TEXT: ${{ needs.activation.outputs.text }}
         with:
           script: |
             const substitutePlaceholders = require('/opt/gh-aw/actions/substitute_placeholders.cjs');
@@ -903,17 +837,13 @@ jobs:
                 GH_AW_GITHUB_EVENT_PULL_REQUEST_NUMBER: process.env.GH_AW_GITHUB_EVENT_PULL_REQUEST_NUMBER,
                 GH_AW_GITHUB_REPOSITORY: process.env.GH_AW_GITHUB_REPOSITORY,
                 GH_AW_GITHUB_RUN_ID: process.env.GH_AW_GITHUB_RUN_ID,
-                GH_AW_GITHUB_WORKSPACE: process.env.GH_AW_GITHUB_WORKSPACE,
-                GH_AW_NEEDS_ACTIVATION_OUTPUTS_TEXT: process.env.GH_AW_NEEDS_ACTIVATION_OUTPUTS_TEXT
+                GH_AW_GITHUB_WORKSPACE: process.env.GH_AW_GITHUB_WORKSPACE
               }
             });
       - name: Interpolate variables and render templates
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
         env:
           GH_AW_PROMPT: /tmp/gh-aw/aw-prompts/prompt.txt
-          GH_AW_GITHUB_EVENT_PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number }}
-          GH_AW_GITHUB_REPOSITORY: ${{ github.repository }}
-          GH_AW_NEEDS_ACTIVATION_OUTPUTS_TEXT: ${{ needs.activation.outputs.text }}
         with:
           script: |
             const { setupGlobals } = require('/opt/gh-aw/actions/setup_globals.cjs');
@@ -935,7 +865,7 @@ jobs:
           mkdir -p "$HOME/.cache"
           INSTRUCTION="$(cat "$GH_AW_PROMPT")"
           mkdir -p "$CODEX_HOME/logs"
-          sudo -E awf --env-all --env "ANDROID_HOME=${ANDROID_HOME}" --env "ANDROID_NDK=${ANDROID_NDK}" --env "ANDROID_NDK_HOME=${ANDROID_NDK_HOME}" --env "ANDROID_NDK_LATEST_HOME=${ANDROID_NDK_LATEST_HOME}" --env "ANDROID_NDK_ROOT=${ANDROID_NDK_ROOT}" --env "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT}" --env "AZURE_EXTENSION_DIR=${AZURE_EXTENSION_DIR}" --env "CARGO_HOME=${CARGO_HOME}" --env "CHROMEWEBDRIVER=${CHROMEWEBDRIVER}" --env "CONDA=${CONDA}" --env "DOTNET_ROOT=${DOTNET_ROOT}" --env "EDGEWEBDRIVER=${EDGEWEBDRIVER}" --env "GECKOWEBDRIVER=${GECKOWEBDRIVER}" --env "GEM_HOME=${GEM_HOME}" --env "GEM_PATH=${GEM_PATH}" --env "GOPATH=${GOPATH}" --env "GOROOT=${GOROOT}" --env "HOMEBREW_CELLAR=${HOMEBREW_CELLAR}" --env "HOMEBREW_PREFIX=${HOMEBREW_PREFIX}" --env "HOMEBREW_REPOSITORY=${HOMEBREW_REPOSITORY}" --env "JAVA_HOME=${JAVA_HOME}" --env "JAVA_HOME_11_X64=${JAVA_HOME_11_X64}" --env "JAVA_HOME_17_X64=${JAVA_HOME_17_X64}" --env "JAVA_HOME_21_X64=${JAVA_HOME_21_X64}" --env "JAVA_HOME_25_X64=${JAVA_HOME_25_X64}" --env "JAVA_HOME_8_X64=${JAVA_HOME_8_X64}" --env "NVM_DIR=${NVM_DIR}" --env "PIPX_BIN_DIR=${PIPX_BIN_DIR}" --env "PIPX_HOME=${PIPX_HOME}" --env "RUSTUP_HOME=${RUSTUP_HOME}" --env "SELENIUM_JAR_PATH=${SELENIUM_JAR_PATH}" --env "SWIFT_PATH=${SWIFT_PATH}" --env "VCPKG_INSTALLATION_ROOT=${VCPKG_INSTALLATION_ROOT}" --env "GH_AW_TOOL_BINS=$GH_AW_TOOL_BINS" --container-workdir "${GITHUB_WORKSPACE}" --mount /tmp:/tmp:rw --mount "${HOME}/.cache:${HOME}/.cache:rw" --mount "${GITHUB_WORKSPACE}:${GITHUB_WORKSPACE}:rw" --mount /opt/hostedtoolcache:/opt/hostedtoolcache:ro --mount /opt/gh-aw:/opt/gh-aw:ro --allow-domains api.npms.io,api.openai.com,api.snapcraft.io,archive.ubuntu.com,azure.archive.ubuntu.com,bun.sh,crl.geotrust.com,crl.globalsign.com,crl.identrust.com,crl.sectigo.com,crl.thawte.com,crl.usertrust.com,crl.verisign.com,crl3.digicert.com,crl4.digicert.com,crls.ssl.com,deb.nodesource.com,deno.land,get.pnpm.io,host.docker.internal,json-schema.org,json.schemastore.org,keyserver.ubuntu.com,nodejs.org,npm.pkg.github.com,npmjs.com,npmjs.org,ocsp.digicert.com,ocsp.geotrust.com,ocsp.globalsign.com,ocsp.identrust.com,ocsp.sectigo.com,ocsp.ssl.com,ocsp.thawte.com,ocsp.usertrust.com,ocsp.verisign.com,openai.com,packagecloud.io,packages.cloud.google.com,packages.microsoft.com,ppa.launchpad.net,registry.bower.io,registry.npmjs.com,registry.npmjs.org,registry.yarnpkg.com,repo.yarnpkg.com,s.symcb.com,s.symcd.com,security.ubuntu.com,skimdb.npmjs.com,ts-crl.ws.symantec.com,ts-ocsp.ws.symantec.com,www.npmjs.com,www.npmjs.org,yarnpkg.com --log-level info --proxy-logs-dir /tmp/gh-aw/sandbox/firewall/logs --enable-host-access --image-tag 0.11.2 --agent-image act \
+          sudo -E awf --env-all --env "ANDROID_HOME=${ANDROID_HOME}" --env "ANDROID_NDK=${ANDROID_NDK}" --env "ANDROID_NDK_HOME=${ANDROID_NDK_HOME}" --env "ANDROID_NDK_LATEST_HOME=${ANDROID_NDK_LATEST_HOME}" --env "ANDROID_NDK_ROOT=${ANDROID_NDK_ROOT}" --env "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT}" --env "AZURE_EXTENSION_DIR=${AZURE_EXTENSION_DIR}" --env "CARGO_HOME=${CARGO_HOME}" --env "CHROMEWEBDRIVER=${CHROMEWEBDRIVER}" --env "CONDA=${CONDA}" --env "DOTNET_ROOT=${DOTNET_ROOT}" --env "EDGEWEBDRIVER=${EDGEWEBDRIVER}" --env "GECKOWEBDRIVER=${GECKOWEBDRIVER}" --env "GEM_HOME=${GEM_HOME}" --env "GEM_PATH=${GEM_PATH}" --env "GOPATH=${GOPATH}" --env "GOROOT=${GOROOT}" --env "HOMEBREW_CELLAR=${HOMEBREW_CELLAR}" --env "HOMEBREW_PREFIX=${HOMEBREW_PREFIX}" --env "HOMEBREW_REPOSITORY=${HOMEBREW_REPOSITORY}" --env "JAVA_HOME=${JAVA_HOME}" --env "JAVA_HOME_11_X64=${JAVA_HOME_11_X64}" --env "JAVA_HOME_17_X64=${JAVA_HOME_17_X64}" --env "JAVA_HOME_21_X64=${JAVA_HOME_21_X64}" --env "JAVA_HOME_25_X64=${JAVA_HOME_25_X64}" --env "JAVA_HOME_8_X64=${JAVA_HOME_8_X64}" --env "NVM_DIR=${NVM_DIR}" --env "PIPX_BIN_DIR=${PIPX_BIN_DIR}" --env "PIPX_HOME=${PIPX_HOME}" --env "RUSTUP_HOME=${RUSTUP_HOME}" --env "SELENIUM_JAR_PATH=${SELENIUM_JAR_PATH}" --env "SWIFT_PATH=${SWIFT_PATH}" --env "VCPKG_INSTALLATION_ROOT=${VCPKG_INSTALLATION_ROOT}" --env "GH_AW_TOOL_BINS=$GH_AW_TOOL_BINS" --container-workdir "${GITHUB_WORKSPACE}" --mount /tmp:/tmp:rw --mount "${HOME}/.cache:${HOME}/.cache:rw" --mount "${GITHUB_WORKSPACE}:${GITHUB_WORKSPACE}:rw" --mount /opt/hostedtoolcache:/opt/hostedtoolcache:ro --mount /opt/gh-aw:/opt/gh-aw:ro --allow-domains '*.jsr.io,api.npms.io,api.openai.com,api.snapcraft.io,archive.ubuntu.com,azure.archive.ubuntu.com,bun.sh,crl.geotrust.com,crl.globalsign.com,crl.identrust.com,crl.sectigo.com,crl.thawte.com,crl.usertrust.com,crl.verisign.com,crl3.digicert.com,crl4.digicert.com,crls.ssl.com,deb.nodesource.com,deno.land,get.pnpm.io,host.docker.internal,json-schema.org,json.schemastore.org,jsr.io,keyserver.ubuntu.com,nodejs.org,npm.pkg.github.com,npmjs.com,npmjs.org,ocsp.digicert.com,ocsp.geotrust.com,ocsp.globalsign.com,ocsp.identrust.com,ocsp.sectigo.com,ocsp.ssl.com,ocsp.thawte.com,ocsp.usertrust.com,ocsp.verisign.com,openai.com,packagecloud.io,packages.cloud.google.com,packages.microsoft.com,ppa.launchpad.net,registry.bower.io,registry.npmjs.com,registry.npmjs.org,registry.yarnpkg.com,repo.yarnpkg.com,s.symcb.com,s.symcd.com,security.ubuntu.com,skimdb.npmjs.com,ts-crl.ws.symantec.com,ts-ocsp.ws.symantec.com,www.npmjs.com,www.npmjs.org,yarnpkg.com' --log-level info --proxy-logs-dir /tmp/gh-aw/sandbox/firewall/logs --enable-host-access --image-tag 0.11.2 --agent-image act \
             -- source /opt/gh-aw/actions/sanitize_path.sh "$GH_AW_TOOL_BINS$(find /opt/hostedtoolcache -maxdepth 4 -type d -name bin 2>/dev/null | tr '\n' ':')$PATH" && codex -c model=gpt-5.1-codex-mini exec --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check "$INSTRUCTION" \
             2>&1 | tee /tmp/gh-aw/agent-stdio.log
         env:
@@ -984,7 +914,7 @@ jobs:
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
         env:
           GH_AW_SAFE_OUTPUTS: ${{ env.GH_AW_SAFE_OUTPUTS }}
-          GH_AW_ALLOWED_DOMAINS: "api.npms.io,api.openai.com,api.snapcraft.io,archive.ubuntu.com,azure.archive.ubuntu.com,bun.sh,crl.geotrust.com,crl.globalsign.com,crl.identrust.com,crl.sectigo.com,crl.thawte.com,crl.usertrust.com,crl.verisign.com,crl3.digicert.com,crl4.digicert.com,crls.ssl.com,deb.nodesource.com,deno.land,get.pnpm.io,host.docker.internal,json-schema.org,json.schemastore.org,keyserver.ubuntu.com,nodejs.org,npm.pkg.github.com,npmjs.com,npmjs.org,ocsp.digicert.com,ocsp.geotrust.com,ocsp.globalsign.com,ocsp.identrust.com,ocsp.sectigo.com,ocsp.ssl.com,ocsp.thawte.com,ocsp.usertrust.com,ocsp.verisign.com,openai.com,packagecloud.io,packages.cloud.google.com,packages.microsoft.com,ppa.launchpad.net,registry.bower.io,registry.npmjs.com,registry.npmjs.org,registry.yarnpkg.com,repo.yarnpkg.com,s.symcb.com,s.symcd.com,security.ubuntu.com,skimdb.npmjs.com,ts-crl.ws.symantec.com,ts-ocsp.ws.symantec.com,www.npmjs.com,www.npmjs.org,yarnpkg.com"
+          GH_AW_ALLOWED_DOMAINS: "*.jsr.io,api.npms.io,api.openai.com,api.snapcraft.io,archive.ubuntu.com,azure.archive.ubuntu.com,bun.sh,crl.geotrust.com,crl.globalsign.com,crl.identrust.com,crl.sectigo.com,crl.thawte.com,crl.usertrust.com,crl.verisign.com,crl3.digicert.com,crl4.digicert.com,crls.ssl.com,deb.nodesource.com,deno.land,get.pnpm.io,host.docker.internal,json-schema.org,json.schemastore.org,jsr.io,keyserver.ubuntu.com,nodejs.org,npm.pkg.github.com,npmjs.com,npmjs.org,ocsp.digicert.com,ocsp.geotrust.com,ocsp.globalsign.com,ocsp.identrust.com,ocsp.sectigo.com,ocsp.ssl.com,ocsp.thawte.com,ocsp.usertrust.com,ocsp.verisign.com,openai.com,packagecloud.io,packages.cloud.google.com,packages.microsoft.com,ppa.launchpad.net,registry.bower.io,registry.npmjs.com,registry.npmjs.org,registry.yarnpkg.com,repo.yarnpkg.com,s.symcb.com,s.symcd.com,security.ubuntu.com,skimdb.npmjs.com,ts-crl.ws.symantec.com,ts-ocsp.ws.symantec.com,www.npmjs.com,www.npmjs.org,yarnpkg.com"
           GITHUB_SERVER_URL: ${{ github.server_url }}
           GITHUB_API_URL: ${{ github.api_url }}
         with:
@@ -1305,9 +1235,10 @@ jobs:
 
   pre_activation:
     if: >
-      ((github.event.pull_request.base.ref == github.event.repository.default_branch) && ((github.event_name != 'pull_request') ||
+      (((github.event_name != 'schedule') && (github.event_name != 'merge_group')) && (github.event_name != 'workflow_dispatch')) &&
+      (((github.event.pull_request.base.ref == github.event.repository.default_branch) && ((github.event_name != 'pull_request') ||
       (github.event.pull_request.head.repo.id == github.repository_id))) && ((github.event_name != 'pull_request') ||
-      ((github.event.action != 'labeled') || (github.event.label.name == 'changeset' || github.event.label.name == 'smoke')))
+      ((github.event.action != 'labeled') || (github.event.label.name == 'changeset' || github.event.label.name == 'smoke'))))
     runs-on: ubuntu-slim
     permissions:
       contents: read

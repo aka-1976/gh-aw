@@ -19,6 +19,8 @@
 #   gh aw compile
 # For more information: https://github.com/githubnext/gh-aw/blob/main/.github/aw/github-agentic-workflows.md
 #
+#
+# frontmatter-hash: 72a8d0112480674a1ec61e522a27ba2ea545e5291f553bb68d15878da6ab2c50
 
 name: "Example: Custom Error Patterns"
 "on":
@@ -36,7 +38,7 @@ run-name: "Example: Custom Error Patterns"
 jobs:
   activation:
     needs: pre_activation
-    if: needs.pre_activation.outputs.activated == 'true'
+    if: (needs.pre_activation.result == 'skipped') || (needs.pre_activation.outputs.activated == 'true')
     runs-on: ubuntu-slim
     permissions:
       contents: read
@@ -282,18 +284,7 @@ jobs:
           </system>
           PROMPT_EOF
           cat << 'PROMPT_EOF' >> "$GH_AW_PROMPT"
-          # Example: Custom Error Patterns
-          
-          This workflow demonstrates how to define custom error patterns on any agentic engine. 
-          Custom error patterns help detect project-specific error formats in agent logs.
-          
-          ## Features
-          
-          - Works with any engine (Copilot, Claude, Codex, Custom)
-          - Can be imported from shared workflows
-          - Merged with engine's built-in error patterns
-          - Useful for project-specific error filtering
-          
+          {{#runtime-import workflows/example-custom-error-patterns.md}}
           PROMPT_EOF
       - name: Substitute placeholders
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
@@ -459,6 +450,8 @@ jobs:
           if-no-files-found: ignore
 
   pre_activation:
+    if: >
+      ((github.event_name != 'schedule') && (github.event_name != 'merge_group')) && (github.event_name != 'workflow_dispatch')
     runs-on: ubuntu-slim
     permissions:
       contents: read

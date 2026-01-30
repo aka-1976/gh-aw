@@ -1,3 +1,5 @@
+//go:build !integration
+
 package cli
 
 import (
@@ -65,11 +67,6 @@ func TestEnsureGitAttributes(t *testing.T) {
 			name:            "updates old format entry",
 			existingContent: "*.md linguist-documentation=true\n.github/workflows/*.lock.yml linguist-generated=true\n*.txt text=auto\n",
 			expectedContent: "*.md linguist-documentation=true\n.github/workflows/*.lock.yml linguist-generated=true merge=ours\n*.txt text=auto",
-		},
-		{
-			name:            "removes obsolete campaign.g.md entry",
-			existingContent: ".github/workflows/*.lock.yml linguist-generated=true merge=ours\n.github/workflows/*.campaign.g.md linguist-generated=true merge=ours\n",
-			expectedContent: ".github/workflows/*.lock.yml linguist-generated=true merge=ours",
 		},
 	}
 

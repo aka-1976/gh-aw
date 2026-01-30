@@ -165,6 +165,7 @@ export default defineConfig({
 				{
 					label: 'Guides',
 					items: [
+						{ label: 'GitHub Actions Primer', link: '/guides/github-actions-primer/' },
 						{ label: 'Packaging & Distribution', link: '/guides/packaging-imports/' },
 						{ label: 'Security Best Practices', link: '/guides/security/' },
 						{ label: 'Using MCPs', link: '/guides/mcps/' },
@@ -192,11 +193,8 @@ export default defineConfig({
 				{
 						label: 'Campaigns',
 					items: [
-						{ label: 'About campaigns', link: '/guides/campaigns/' },
+						{ label: 'About Campaigns', link: '/guides/campaigns/' },
 						{ label: 'Getting Started', link: '/guides/campaigns/getting-started/' },
-						{ label: 'Campaign Specs', link: '/guides/campaigns/specs/' },
-						{ label: 'Campaign Lifecycle', link: '/guides/campaigns/lifecycle/' },
-						{ label: 'CLI Commands', link: '/guides/campaigns/cli-commands/' },
 					],
 				},
 					{

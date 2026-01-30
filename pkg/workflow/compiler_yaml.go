@@ -3,10 +3,12 @@ package workflow
 import (
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/githubnext/gh-aw/pkg/constants"
 	"github.com/githubnext/gh-aw/pkg/logger"
+	"github.com/githubnext/gh-aw/pkg/parser"
 	"github.com/githubnext/gh-aw/pkg/stringutil"
 )
 
@@ -43,9 +45,9 @@ func (c *Compiler) buildJobsAndValidate(data *WorkflowData, markdownPath string)
 }
 
 // generateWorkflowHeader generates the YAML header section including comments
-// for description, source, imports/includes, stop-time, and manual-approval.
+// for description, source, imports/includes, frontmatter-hash, stop-time, and manual-approval.
 // All ANSI escape codes are stripped from the output.
-func (c *Compiler) generateWorkflowHeader(yaml *strings.Builder, data *WorkflowData) {
+func (c *Compiler) generateWorkflowHeader(yaml *strings.Builder, data *WorkflowData, frontmatterHash string) {
 	// Add workflow header with logo and instructions
 	sourceFile := "the corresponding .md file"
 	if data.Source != "" {
@@ -91,6 +93,13 @@ func (c *Compiler) generateWorkflowHeader(yaml *strings.Builder, data *WorkflowD
 				fmt.Fprintf(yaml, "#     - %s\n", cleanFile)
 			}
 		}
+	}
+
+	// Add frontmatter hash if computed
+	// Format on a single line to minimize merge conflicts
+	if frontmatterHash != "" {
+		yaml.WriteString("#\n")
+		fmt.Fprintf(yaml, "# frontmatter-hash: %s\n", frontmatterHash)
 	}
 
 	// Add stop-time comment if configured
@@ -149,13 +158,28 @@ func (c *Compiler) generateYAML(data *WorkflowData, markdownPath string) (string
 		return "", err
 	}
 
+	// Compute frontmatter hash before generating YAML
+	var frontmatterHash string
+	if markdownPath != "" {
+		baseDir := filepath.Dir(markdownPath)
+		cache := parser.NewImportCache(baseDir)
+		hash, err := parser.ComputeFrontmatterHashFromFile(markdownPath, cache)
+		if err != nil {
+			compilerYamlLog.Printf("Warning: failed to compute frontmatter hash: %v", err)
+			// Continue without hash - non-fatal error
+		} else {
+			frontmatterHash = hash
+			compilerYamlLog.Printf("Computed frontmatter hash: %s", hash)
+		}
+	}
+
 	// Pre-allocate builder capacity based on estimated workflow size
 	// Average workflow generates ~200KB, allocate 256KB to minimize reallocations
 	var yaml strings.Builder
 	yaml.Grow(256 * 1024)
 
-	// Generate workflow header comments
-	c.generateWorkflowHeader(&yaml, data)
+	// Generate workflow header comments (including hash)
+	c.generateWorkflowHeader(&yaml, data, frontmatterHash)
 
 	// Generate workflow body structure
 	c.generateWorkflowBody(&yaml, data)
@@ -207,45 +231,78 @@ func splitContentIntoChunks(content string) []string {
 func (c *Compiler) generatePrompt(yaml *strings.Builder, data *WorkflowData) {
 	compilerYamlLog.Printf("Generating prompt for workflow: %s (markdown size: %d bytes)", data.Name, len(data.MarkdownContent))
 
-	// Clean the markdown content
-	cleanedMarkdownContent := removeXMLComments(data.MarkdownContent)
-
-	// Substitute import inputs before expression extraction
-	// This replaces ${{ github.aw.inputs.<key> }} with actual values from imports
-	if len(data.ImportInputs) > 0 {
-		cleanedMarkdownContent = SubstituteImportInputs(cleanedMarkdownContent, data.ImportInputs)
-	}
-
-	// Wrap GitHub expressions in template conditionals BEFORE extracting expressions
-	// This ensures that expressions created by wrapping (e.g., {{#if ${{ expr }} }})
-	// are also extracted and replaced with environment variables
-	cleanedMarkdownContent = wrapExpressionsInTemplateConditionals(cleanedMarkdownContent)
-
-	// Extract expressions and create environment variable mappings for security
-	extractor := NewExpressionExtractor()
-	expressionMappings, err := extractor.ExtractExpressions(cleanedMarkdownContent)
-	if err != nil {
-		// Log error but continue - this is a compiler step, we shouldn't fail
-		// The original expressions will be used if extraction fails
-		expressionMappings = nil
-	}
-
-	// Replace expressions with environment variable references
-	if len(expressionMappings) > 0 {
-		cleanedMarkdownContent = extractor.ReplaceExpressionsWithEnvVars(cleanedMarkdownContent)
-	}
-
-	// Split content into manageable chunks
-	userPromptChunks := splitContentIntoChunks(cleanedMarkdownContent)
-	compilerYamlLog.Printf("Split user prompt into %d chunks", len(userPromptChunks))
-
 	// Collect built-in prompt sections (these should be prepended to user prompt)
 	builtinSections := c.collectPromptSections(data)
 	compilerYamlLog.Printf("Collected %d built-in prompt sections", len(builtinSections))
 
-	// Generate a single unified prompt creation step that includes:
-	// 1. Built-in context instructions (prepended)
-	// 2. User prompt content (appended after built-in)
+	// NEW APPROACH (based on feedback from @pelikhan):
+	// - Imported markdown (from frontmatter imports) is ALWAYS inlined
+	// - Main workflow markdown body uses runtime-import to allow editing without recompilation
+	// This means: inline the imports, then add a runtime-import macro for the main workflow file
+
+	var userPromptChunks []string
+	var expressionMappings []*ExpressionMapping
+
+	// Step 1: Process and inline imported markdown (if any)
+	if data.ImportedMarkdown != "" {
+		compilerYamlLog.Printf("Inlining imported markdown (%d bytes)", len(data.ImportedMarkdown))
+
+		// Clean and process imported markdown
+		cleanedImportedMarkdown := removeXMLComments(data.ImportedMarkdown)
+
+		// Substitute import inputs in imported content
+		if len(data.ImportInputs) > 0 {
+			cleanedImportedMarkdown = SubstituteImportInputs(cleanedImportedMarkdown, data.ImportInputs)
+		}
+
+		// Wrap GitHub expressions in template conditionals
+		cleanedImportedMarkdown = wrapExpressionsInTemplateConditionals(cleanedImportedMarkdown)
+
+		// Extract expressions from imported content
+		extractor := NewExpressionExtractor()
+		importedExprMappings, err := extractor.ExtractExpressions(cleanedImportedMarkdown)
+		if err == nil && len(importedExprMappings) > 0 {
+			cleanedImportedMarkdown = extractor.ReplaceExpressionsWithEnvVars(cleanedImportedMarkdown)
+			expressionMappings = importedExprMappings
+		}
+
+		// Split imported content into chunks and add to user prompt
+		importedChunks := splitContentIntoChunks(cleanedImportedMarkdown)
+		userPromptChunks = append(userPromptChunks, importedChunks...)
+		compilerYamlLog.Printf("Inlined imported markdown in %d chunks", len(importedChunks))
+	}
+
+	// Step 2: Add runtime-import for main workflow markdown
+	// This allows users to edit the main workflow file without recompilation
+	workflowBasename := filepath.Base(c.markdownPath)
+
+	// Determine the directory path relative to .github
+	// For a workflow at ".github/workflows/test.md", the runtime-import path should be "workflows/test.md"
+	var workflowFilePath string
+	if strings.Contains(c.markdownPath, ".github") {
+		// Extract everything after ".github/"
+		githubIndex := strings.Index(c.markdownPath, ".github")
+		if githubIndex != -1 {
+			relPath := c.markdownPath[githubIndex+len(".github/"):]
+			workflowFilePath = relPath
+		} else {
+			// Fallback
+			workflowFilePath = workflowBasename
+		}
+	} else {
+		// For non-standard paths (like /tmp/test.md), just use the basename
+		workflowFilePath = workflowBasename
+	}
+
+	// Create a runtime-import macro for the main workflow markdown
+	// The runtime_import.cjs helper will extract and process the markdown body at runtime
+	runtimeImportMacro := fmt.Sprintf("{{#runtime-import %s}}", workflowFilePath)
+	compilerYamlLog.Printf("Using runtime-import for main workflow markdown: %s", workflowFilePath)
+
+	// Append runtime-import macro after imported chunks
+	userPromptChunks = append(userPromptChunks, runtimeImportMacro)
+
+	// Generate a single unified prompt creation step
 	c.generateUnifiedPromptCreationStep(yaml, builtinSections, userPromptChunks, expressionMappings, data)
 
 	// Add combined interpolation and template rendering step
@@ -263,7 +320,6 @@ func (c *Compiler) generatePrompt(yaml *strings.Builder, data *WorkflowData) {
 	yaml.WriteString("          GH_AW_PROMPT: /tmp/gh-aw/aw-prompts/prompt.txt\n")
 	yaml.WriteString("        run: bash /opt/gh-aw/actions/print_prompt_summary.sh\n")
 }
-
 func (c *Compiler) generatePostSteps(yaml *strings.Builder, data *WorkflowData) {
 	if data.PostSteps != "" {
 		// Remove "post-steps:" line and adjust indentation, similar to CustomSteps processing

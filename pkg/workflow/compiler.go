@@ -94,6 +94,9 @@ func (c *Compiler) CompileWorkflow(markdownPath string) error {
 // CompileWorkflowData compiles a workflow from already-parsed WorkflowData
 // This avoids re-parsing when the data has already been parsed
 func (c *Compiler) CompileWorkflowData(workflowData *WorkflowData, markdownPath string) error {
+	// Store markdownPath for use in dynamic tool generation and prompt generation
+	c.markdownPath = markdownPath
+
 	// Track compilation time for performance monitoring
 	startTime := time.Now()
 	defer func() {
@@ -185,13 +188,13 @@ func (c *Compiler) CompileWorkflowData(workflowData *WorkflowData, markdownPath 
 
 	// Validate safe-outputs allowed-domains configuration
 	log.Printf("Validating safe-outputs allowed-domains")
-	if err := validateSafeOutputsAllowedDomains(workflowData.SafeOutputs); err != nil {
+	if err := c.validateSafeOutputsAllowedDomains(workflowData.SafeOutputs); err != nil {
 		return formatCompilerError(markdownPath, "error", err.Error())
 	}
 
 	// Validate network allowed domains configuration
 	log.Printf("Validating network allowed domains")
-	if err := validateNetworkAllowedDomains(workflowData.NetworkPermissions); err != nil {
+	if err := c.validateNetworkAllowedDomains(workflowData.NetworkPermissions); err != nil {
 		return formatCompilerError(markdownPath, "error", err.Error())
 	}
 
@@ -210,15 +213,6 @@ func (c *Compiler) CompileWorkflowData(workflowData *WorkflowData, markdownPath 
 	// Emit experimental warning for safe-inputs feature
 	if IsSafeInputsEnabled(workflowData.SafeInputs, workflowData) {
 		fmt.Fprintln(os.Stderr, console.FormatWarningMessage("Using experimental feature: safe-inputs"))
-		c.IncrementWarningCount()
-	}
-
-	// Emit experimental warning for campaigns feature
-	// Campaign workflows (.campaign.md) are compiled by the campaign system in pkg/campaign/
-	// This warning is part of the general workflow compilation pipeline and simply
-	// detects campaign files to inform users about the experimental status.
-	if strings.HasSuffix(markdownPath, ".campaign.md") {
-		fmt.Fprintln(os.Stderr, console.FormatWarningMessage("Using experimental feature: campaigns - This is a preview feature for multi-workflow orchestration. The campaign spec format, CLI commands, and repo-memory conventions may change in future releases. Workflows may break or require migration when the feature stabilizes."))
 		c.IncrementWarningCount()
 	}
 

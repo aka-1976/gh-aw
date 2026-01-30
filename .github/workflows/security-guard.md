@@ -2,12 +2,16 @@
 description: Automated security guard that reviews every PR for changes that could weaken security posture, only commenting when concrete evidence of security concerns exists
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [ready_for_review]
+    draft: false
 permissions:
   contents: read
   pull-requests: read
   actions: read
   security-events: read
+engine:
+  id: copilot
+  model: gpt-5.1-codex-mini
 tools:
   github:
     toolsets: [repos, pull_requests, code_security]

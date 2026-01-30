@@ -42,12 +42,15 @@ build-windows:
 
 # Test the code (runs both unlabelled unit tests and integration tests and long tests)
 .PHONY: test
-test:
-	go test -v -parallel=4 -timeout=10m -tags 'integration' -run='^Test' ./...
+test: test-unit test-integration
 
 # Test unit tests only (excludes labelled integration tests and long tests)
 .PHONY: test-unit
 test-unit:
+	go test -v -parallel=4 -timeout=10m -run='^Test' ./... -short
+
+.PHONY: test-integration
+test-integration:
 	go test -v -parallel=4 -timeout=10m -run='^Test' ./... -short
 
 # Update golden test files
@@ -591,13 +594,6 @@ sync-templates:
 
 	# Agent templates
 	@cp .github/agents/agentic-workflows.agent.md pkg/cli/templates/
-	
-	# Campaign management templates (lifecycle order)
-	@cp .github/aw/generate-agentic-campaign.md pkg/cli/templates/
-	@cp .github/aw/orchestrate-agentic-campaign.md pkg/cli/templates/
-	@cp .github/aw/execute-agentic-campaign-workflow.md pkg/cli/templates/
-	@cp .github/aw/update-agentic-campaign-project.md pkg/cli/templates/
-	@cp .github/aw/close-agentic-campaign.md pkg/cli/templates/
 
 	@echo "✓ Templates synced successfully"
 

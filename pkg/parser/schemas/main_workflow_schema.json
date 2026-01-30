@@ -1791,12 +1791,6 @@
       "description": "Workflow timeout in minutes (GitHub Actions standard field). Defaults to 20 minutes for agentic workflows. Has sensible defaults and can typically be omitted.",
       "examples": [5, 10, 30]
     },
-    "timeout_minutes": {
-      "type": "integer",
-      "description": "Deprecated: Use 'timeout-minutes' instead. Workflow timeout in minutes. Defaults to 20 minutes for agentic workflows.",
-      "examples": [5, 10, 30],
-      "deprecated": true
-    },
     "concurrency": {
       "description": "Concurrency control to limit concurrent workflow runs (GitHub Actions standard field). Supports two forms: simple string for basic group isolation, or object with cancel-in-progress option for advanced control. Agentic workflows enhance this with automatic per-engine concurrency policies (defaults to single job per engine across all workflows) and token-based rate limiting. Default behavior: workflows in the same group queue sequentially unless cancel-in-progress is true. See https://docs.github.com/en/actions/using-jobs/using-concurrency",
       "oneOf": [
@@ -3415,6 +3409,10 @@
             "description": "Simple tool string for basic tool configuration"
           },
           {
+            "type": "boolean",
+            "description": "Boolean flag to enable or disable a tool (e.g., safety-prompt: true)"
+          },
+          {
             "type": "object",
             "description": "MCP server configuration object",
             "properties": {
@@ -3653,8 +3651,8 @@
         {
           "type": "string",
           "description": "GitHub Project URL for tracking workflow-created items. When configured, automatically enables project tracking operations (update-project, create-project-status-update) to manage project boards similar to campaign orchestrators.",
-          "pattern": "^https://github\\.com/(users|orgs)/[^/]+/projects/\\d+$",
-          "examples": ["https://github.com/orgs/github/projects/123", "https://github.com/users/username/projects/456"]
+          "pattern": "^https://github\\.com/(users|orgs)/([^/]+|<[A-Z_]+>)/projects/(\\d+|<[A-Z_]+>)$",
+          "examples": ["https://github.com/orgs/github/projects/123", "https://github.com/users/username/projects/456", "https://github.com/orgs/<ORG>/projects/<NUMBER>"]
         },
         {
           "type": "object",
@@ -3665,8 +3663,8 @@
             "url": {
               "type": "string",
               "description": "GitHub Project URL (required). Must be a valid GitHub Projects V2 URL.",
-              "pattern": "^https://github\\.com/(users|orgs)/[^/]+/projects/\\d+$",
-              "examples": ["https://github.com/orgs/github/projects/123", "https://github.com/users/username/projects/456"]
+              "pattern": "^https://github\\.com/(users|orgs)/([^/]+|<[A-Z_]+>)/projects/(\\d+|<[A-Z_]+>)$",
+              "examples": ["https://github.com/orgs/github/projects/123", "https://github.com/users/username/projects/456", "https://github.com/orgs/<ORG>/projects/<NUMBER>"]
             },
             "max-updates": {
               "type": "integer",

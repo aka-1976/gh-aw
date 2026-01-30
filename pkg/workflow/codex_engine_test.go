@@ -1,3 +1,5 @@
+//go:build !integration
+
 package workflow
 
 import (
@@ -20,8 +22,8 @@ func TestCodexEngine(t *testing.T) {
 		t.Errorf("Expected display name 'Codex', got '%s'", engine.GetDisplayName())
 	}
 
-	if !engine.IsExperimental() {
-		t.Error("Codex engine should be experimental")
+	if engine.IsExperimental() {
+		t.Error("Codex engine should not be experimental")
 	}
 
 	if !engine.SupportsToolsAllowlist() {

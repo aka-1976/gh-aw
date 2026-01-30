@@ -73,6 +73,26 @@ make build       # Rebuild gh-aw after modifying JSON schemas in pkg/parser/sche
 ```
 Schema files are embedded in the binary using `//go:embed` directives, so changes require rebuilding the binary.
 
+**ALWAYS ADD BUILD TAGS TO TEST FILES:**
+
+Every test file (`*_test.go`) **must** have a build tag at the very top of the file:
+
+```go
+//go:build !integration    // For unit tests (default)
+
+//go:build integration     // For integration tests (files with "integration" in name)
+```
+
+**Rules:**
+- Files with "integration" in the filename get `//go:build integration`
+- All other test files get `//go:build !integration`
+- The build tag must be the **first line** of the file, followed by an empty line
+
+**To add build tags to all test files:**
+```bash
+./scripts/add-build-tags.sh
+```
+
 **ALWAYS RUN LINTERS AFTER ADDING TEST FILES:**
 
 When adding new test files (`*_test.go`), the **unused** linter may catch helper functions that are defined but never called. Always run linters after creating test files to catch these issues early.
@@ -251,7 +271,7 @@ go test -v -run "Test.*Compile" ./pkg/workflow/ # Pattern matching
 
 ## Testing
 
-For comprehensive testing guidelines, patterns, and conventions, see **[specs/testing.md](specs/testing.md)**.
+For comprehensive testing guidelines, patterns, and conventions, see **[scratchpad/testing.md](scratchpad/testing.md)**.
 
 **Key testing principles:**
 - Use `require.*` for critical setup (stops test on failure)
@@ -341,7 +361,7 @@ Contains 2+ distinct domains? ──YES──> Should split
 Keep as-is
 ```
 
-See **[specs/validation-refactoring.md](specs/validation-refactoring.md)** for step-by-step refactoring guide and examples.
+See **[scratchpad/validation-refactoring.md](scratchpad/validation-refactoring.md)** for step-by-step refactoring guide and examples.
 
 ## Console Message Formatting
 
@@ -374,6 +394,23 @@ fmt.Fprintln(os.Stderr, console.FormatErrorMessage(err.Error()))
 - **NEVER** use `fmt.Println()` or `fmt.Printf()` directly - all output should go to stderr
 - Use console formatting helpers with `os.Stderr` for consistent styling
 - For simple messages without console formatting: `fmt.Fprintf(os.Stderr, "message\n")`
+- **Exception**: Structured output (JSON, hashes, graphs) goes to stdout for piping/redirection
+
+**Examples:**
+```go
+// ✅ CORRECT - Diagnostic output to stderr
+fmt.Fprintln(os.Stderr, console.FormatInfoMessage("Processing..."))
+fmt.Fprintf(os.Stderr, "Warning: %s\n", msg)
+
+// ✅ CORRECT - Structured output to stdout
+fmt.Println(string(jsonBytes))  // JSON output
+fmt.Println(hash)                // Hash output
+fmt.Println(mermaidGraph)        // Graph output
+
+// ❌ INCORRECT - Diagnostic output to stdout
+fmt.Println("Processing...")     // Should use stderr
+fmt.Printf("Warning: %s\n", msg) // Should use stderr
+```
 
 ## Debug Logging
 
@@ -438,7 +475,7 @@ DEBUG_COLORS=0 DEBUG=* gh aw compile
 
 ## CLI Command Patterns
 
-For developing new CLI commands, follow these patterns and conventions. See **[specs/cli-command-patterns.md](specs/cli-command-patterns.md)** for comprehensive guidance.
+For developing new CLI commands, follow these patterns and conventions. See **[scratchpad/cli-command-patterns.md](scratchpad/cli-command-patterns.md)** for comprehensive guidance.
 
 ### Command Structure
 
@@ -505,18 +542,26 @@ if err != nil {
 ### Console Output Requirements
 
 ```go
-// ✅ CORRECT - All output to stderr with console formatting
+// ✅ CORRECT - All diagnostic output to stderr with console formatting
 fmt.Fprintln(os.Stderr, console.FormatSuccessMessage("Compiled successfully"))
 fmt.Fprintln(os.Stderr, console.FormatInfoMessage("Processing workflow..."))
 fmt.Fprintln(os.Stderr, console.FormatWarningMessage("File has changes"))
 fmt.Fprintln(os.Stderr, console.FormatErrorMessage(err.Error()))
 
-// ❌ INCORRECT - stdout, no formatting
+// ✅ CORRECT - Structured output to stdout for piping/redirection
+fmt.Println(string(jsonBytes))  // JSON output
+fmt.Println(hash)                // Hash output
+fmt.Println(mermaidGraph)        // Graph output
+
+// ❌ INCORRECT - Diagnostic output to stdout, no formatting
 fmt.Println("Success")
 fmt.Printf("Status: %s\n", status)
 ```
 
-**Exception**: JSON output goes to stdout, all other output to stderr
+**Output Routing Rules (Unix Conventions):**
+- **Diagnostic output** (messages, warnings, errors) → `stderr`
+- **Structured data** (JSON, hashes, graphs) → `stdout`
+- **Rationale**: Allows users to pipe/redirect data without diagnostic noise
 
 ### Help Text Standards
 
@@ -604,7 +649,7 @@ When developing a new command:
 - [ ] Table-driven tests for multiple scenarios
 - [ ] Valid, invalid, and edge case tests
 
-**See**: [specs/cli-command-patterns.md](specs/cli-command-patterns.md) for complete specification with examples and anti-patterns
+**See**: [scratchpad/cli-command-patterns.md](scratchpad/cli-command-patterns.md) for complete specification with examples and anti-patterns
 
 ## Development Guidelines
 
@@ -721,7 +766,7 @@ go test -race ./...
 
 **Primary YAML Library**: `goccy/go-yaml` v1.19.1
 
-gh-aw uses `goccy/go-yaml` for YAML 1.1/1.2 compatibility with GitHub Actions. See [specs/yaml-version-gotchas.md](specs/yaml-version-gotchas.md) for details on YAML version differences.
+gh-aw uses `goccy/go-yaml` for YAML 1.1/1.2 compatibility with GitHub Actions. See [scratchpad/yaml-version-gotchas.md](scratchpad/yaml-version-gotchas.md) for details on YAML version differences.
 
 **Standard YAML Library**: `go.yaml.in/yaml/v3` v3.0.4
 
@@ -862,7 +907,7 @@ func ValidatePermissions(permissions *Permissions, githubTool any)
 - Large "god" interfaces with many methods
 - Type name collisions (use descriptive, domain-qualified names)
 
-**See**: [specs/go-type-patterns.md](specs/go-type-patterns.md) for detailed guidance and examples
+**See**: [scratchpad/go-type-patterns.md](scratchpad/go-type-patterns.md) for detailed guidance and examples
 
 ### Frontmatter Configuration Types
 
@@ -1054,7 +1099,7 @@ Skills provide specialized, detailed knowledge on specific topics. **Use them on
 - **[console-rendering](skills/console-rendering/SKILL.md)** - Struct tag-based console rendering system for CLI output
 - **[error-messages](skills/error-messages/SKILL.md)** - Error message style guide for validation errors
 - **[error-pattern-safety](skills/error-pattern-safety/SKILL.md)** - Safety guidelines for error pattern regex
-- **[error-recovery-patterns](specs/error-recovery-patterns.md)** - Error handling patterns, recovery strategies, and debugging techniques
+- **[error-recovery-patterns](skills/error-recovery-patterns/SKILL.md)** - Error handling patterns, recovery strategies, and debugging techniques
 
 ### JavaScript & GitHub Actions
 - **[github-script](skills/github-script/SKILL.md)** - Best practices for GitHub Actions scripts using github-script

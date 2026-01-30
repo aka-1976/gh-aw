@@ -1,10 +1,11 @@
+//go:build !integration
+
 package main
 
 import (
 	"strings"
 	"testing"
 
-	"github.com/githubnext/gh-aw/pkg/campaign"
 	"github.com/githubnext/gh-aw/pkg/cli"
 	"github.com/spf13/cobra"
 )
@@ -76,7 +77,6 @@ func TestTechnicalTermsCapitalization(t *testing.T) {
 	commandsToCheck := []*cobra.Command{
 		compileCmd,
 		newCmd,
-		campaign.NewCommand(),
 	}
 
 	// Check all commands and their subcommands
