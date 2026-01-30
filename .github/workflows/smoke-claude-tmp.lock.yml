@@ -37,6 +37,7 @@ jobs:
 
   agent:
     needs: activation
+    if: always() && true
     runs-on: ubuntu-slim
     steps:
         - run: |
