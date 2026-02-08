@@ -260,7 +260,7 @@ This workflow has duplicate plugins across imports and top-level.
 		"Expected workflow to install top-level-plugin")
 }
 
-func TestCompileWorkflowWithPluginImportsClaudeEngine(t *testing.T) {
+func TestCompileWorkflowWithPluginImportsFromSharedWorkflow(t *testing.T) {
 	// Create a temporary directory for test files
 	tempDir := testutil.TempDir(t, "test-*")
 
@@ -269,24 +269,24 @@ func TestCompileWorkflowWithPluginImportsClaudeEngine(t *testing.T) {
 	sharedPluginsContent := `---
 on: push
 plugins:
-  - anthropic/plugin-one
+  - github/plugin-one
 ---
 `
 	require.NoError(t, os.WriteFile(sharedPluginsPath, []byte(sharedPluginsContent), 0644),
 		"Failed to write shared plugins file")
 
-	// Create a workflow file that imports plugins and uses Claude engine
+	// Create a workflow file that imports plugins from shared workflow
 	workflowPath := filepath.Join(tempDir, "test-workflow.md")
 	workflowContent := `---
 on: issues
-engine: claude
+engine: copilot
 imports:
   - shared-plugins.md
 ---
 
 # Test Workflow
 
-This workflow uses Claude engine with imported plugins.
+This workflow imports plugins from a shared workflow.
 `
 	require.NoError(t, os.WriteFile(workflowPath, []byte(workflowContent), 0644),
 		"Failed to write workflow file")
@@ -303,7 +303,7 @@ This workflow uses Claude engine with imported plugins.
 
 	workflowData := string(lockFileContent)
 
-	// Verify that Claude engine installs the plugin
-	assert.Contains(t, workflowData, "claude plugin install anthropic/plugin-one",
-		"Expected Claude engine to install plugin from import")
+	// Verify that Copilot engine installs the plugin from import
+	assert.Contains(t, workflowData, "copilot plugin install github/plugin-one",
+		"Expected Copilot engine to install plugin from import")
 }
